@@ -1,8 +1,43 @@
 package Finance::Shares::Log;
 use strict;
 use warnings;
+use File::Spec;
+use Date::Pcalc qw(:all);
+require Exporter;
+our @ISA = qw(Exporter);
 
-our $VERSION = '0.02';
+our @EXPORT_OK = qw(
+    today_as_days today_as_string
+    string_from_days days_from_string
+    ymd_from_days days_from_ymd
+    ymd_from_string string_from_ymd
+    increment_date
+    expand_tilde check_file fetch_line);
+
+our %EXPORT_TAGS =( 
+    date    => [ qw(today_as_days today_as_string
+		    string_from_days days_from_string
+		    ymd_from_days days_from_ymd
+		    ymd_from_string string_from_ymd
+		    increment_date) ],
+    file    => [ qw(expand_tilde check_file
+		    fetch_line) ] );
+
+ sub today_as_days ();
+ sub today_as_string ();
+ sub string_from_days ($);
+ sub days_from_string ($);
+ sub ymd_from_days ($);
+ sub days_from_ymd (@);
+ sub ymd_from_string ($);
+ sub string_from_ymd (@);
+ sub increment_date ($$);
+ 
+ sub expand_tilde ($); 
+ sub check_file ($;$);
+ sub fetch_line ($);
+
+our $VERSION = '0.03';
 
 =head1 NAME
 
@@ -57,6 +92,16 @@ Although the main uses are given above, lower level access is available.
     my open_file = $lf->is_open();
     $lf->close();
 
+Frills include the ability to duplicate log entries allowing multiple destinations, as well as logging in
+simulated time.
+
+    my $l1 = new Finance::Shares::Log('main.log');
+    my $l2 = new Finance::Shares::Log('second.log');
+    $l1->copy_to( $l2 );
+    $l1->copy_remove( $l2 );
+
+    $l1->tick( $my_date );
+    
 =head2 Date functions
 
     $days = today_as_days();
@@ -88,8 +133,26 @@ Although the main uses are given above, lower level access is available.
 =head1 DESCRIPTION
 
 A centralized logging system is used to keep track of which stock prices are fetched from the internet and what
-processing has been done on them.
+processing has been done on them.  It is possible to route messages to any number of destinations.
 
+Example
+
+    my $l1 = new Finance::Shares::Log();
+    my $l2 = new Finance::Shares::Log('debug.log');
+    my $l3 = new Finance::Shares::Log('shares.log');
+    $l1->copy_to( $l2 );
+    $l1->copy_to( $l3 );
+    
+    $l1->level(99);
+    $l2->level(5);
+    $l3->level(1);
+    
+    $l1->log(1, "hello");
+    $l1->log(4, "something wrong?");
+
+'Hello' would appear on the console from $1 as well as being written to the other two files.  The second message
+will go to all except 'shares.log'.
+    
 =cut
 
 =head1 CONSTRUCTOR
@@ -101,6 +164,7 @@ sub new {
     $level = 2 unless (defined $level);
     my $o = {};
     bless( $o, $class );
+    
     $o->{logfile} = check_file($file, $dir);
     if (defined($file)) {
 	$o->{fh} = 0;
@@ -110,23 +174,24 @@ sub new {
 	$o->{isfile} = 0;
     }
     $o->{level} = $level;
+    
     return $o;
 }
 
 =head2 new( [file, [dir, [level]]] )
 
-=over 4
+=over 8
 
-=item C<file>
+=item file
 
 An optional fully qualified path-and-file, a simple file name, or "" for null device.
 
-=item C<dir>
+=item dir
 
 An optional directory.  If present (and C<file> is not already an absolute path), it is prepended to
 C<file>.
 
-=item C<level>
+=item level
 
 The logging threshold.  Messages with numbers greater than this will be ignored. (Default: 2)
 
@@ -135,7 +200,7 @@ The logging threshold.  Messages with numbers greater than this will be ignored.
 Create a new log object.  If C<filename> already exists, logging will just be appended.  Any leading '~' is
 expanded, otherwise any arguments are handled using L<File::Spec|File::Spec> so should be portable.
 
-Logged data will be sent to stdout if no file is given.  If C<file> is given the value "", all logged data is
+Logged data will be sent to STDOUT if no file is given.  If C<file> is given the value "", all logged data is
 suppressed.
 
 =cut
@@ -152,20 +217,28 @@ sub log {
 	$o->print("Stopped") if ($priority == 0);
 	$o->close();
     }
-    die (@params, "\nStopped") if ($priority == 0);
+    
+    if (defined $o->{copy}) {
+	for (my $i = 0; $i <= $#{$o->{copy}}; $i++) {
+	    my $other = $o->{copy}[$i];
+	    $other->log($priority, @params) if defined $other;
+	}
+    }
+    
+    die (join(' ', @params), "\nStopped") if ($priority == 0);
 }
 
 =head2 log( priority, string_or_array )
 
-=over 4
+=over 8
 
-=item C<priority>
+=item priority
 
 This is compared with the value passed to C<level()> to determine whether the data gets logged or ignored.  Higher
 numbers should be used for greater detail; lower numbers for messages that are more important.  A value of '0'
 signifies a fatal error message - the method calls C<die>.
 
-=item C<string_or_array>
+=item string_or_array
 
 The data to be sent to the log.  A timestamp and a trailing "\n" will be added.
 
@@ -191,13 +264,13 @@ sub file {
 
 =head2 file( [file [, dir]] )
 
-=over 4
+=over 8
 
-=item C<file>
+=item file
 
 An optional fully qualified path-and-file, a simple file name, or "" for null device.
 
-=item C<dir>
+=item dir
 
 An optional directory.  If present (and C<file> is not already an absolute path), it is prepended to
 C<file>.
@@ -228,6 +301,51 @@ Returns the priority threshold.
 
 =cut
 
+sub copy_to {
+    my ($o, $other) = @_;
+    if (ref($other) eq 'Finance::Shares::Log') {
+	$o->{copy} = [] unless defined $o->{copy};
+	push @{$o->{copy}}, $other;
+    }
+}
+
+=head2 copy_to( other_log )
+
+Register another log which will receive copies of all B<log> calls made to this object.  C<other_log> must be
+another Finance::Shares::Log object.
+
+=cut
+
+sub copy_remove {
+    my ($o, $other) = @_;
+    if (defined $o->{copy}) {
+	for (my $i = 0; $i <= $#{$o->{copy}}; $i++) {
+	    delete $o->{copy}[$i] if ($o->{copy}[$i] == $other);
+	}
+    }
+}
+
+=head2 copy_remove( other_log )
+
+Stop B<log> calls being copied to the Finance::Shares::Log object previously registered with B<copy_to>.
+
+=cut
+
+sub tick {
+    my ($o, $prompt) = @_;
+    $o->{prompt} = $prompt;
+}
+
+=head2 tick( prompt )
+
+Messages are prefixed by a timestamp by default.  This method allows logging of simulated time.  Calling B<tick>
+with a suitable string such as a date, registers that as the prefix to use.  All B<log> messages will use that
+until another B<tick> is called.
+
+Setting C<prompt> to false ('' or 0) restores the automatic timestamp.
+
+=cut
+
 =head1 SUPPORT METHODS
 
 =cut
@@ -250,13 +368,13 @@ sub open {
 
 =head2 open( [file, [dir]] )
 
-=over 4
+=over 8
 
-=item C<file>
+=item file
 
 An optional fully qualified path-and-file, a simple file name, or "" for null device.
 
-=item C<dir>
+=item dir
 
 An optional directory C<dir>.  If present (and C<file> is not already an absolute path), it is prepended to
 C<file>.
@@ -307,7 +425,7 @@ Closes the log file.
 
 sub print {
     my ($o, @params) = @_;
-    my $timestamp = CORE::localtime();
+    my $timestamp = $o->{prompt} || CORE::localtime();
     print {$o->{fh}} "${timestamp}: ", @params, "\n" if $o->{fh};
 }
 
@@ -320,39 +438,6 @@ C<open()> must have been called beforehand, and C<close()> should be called afte
 =cut
 
 ### EXPORTED FUNCTIONS
-
-use File::Spec;
-use Date::Pcalc qw(:all);
-require Exporter;
-our @ISA = qw(Exporter);
-
-our @EXPORT_OK = qw(
-    today_as_days today_as_string
-    string_from_days days_from_string
-    ymd_from_days days_from_ymd
-    ymd_from_string string_from_ymd
-    expand_tilde check_file fetch_line);
-
-our %EXPORT_TAGS =( 
-    date    => [ qw(today_as_days today_as_string
-		    string_from_days days_from_string
-		    ymd_from_days days_from_ymd
-		    ymd_from_string string_from_ymd) ],
-    file    => [ qw(expand_tilde check_file
-		    fetch_line) ] );
-
- sub today_as_days ();
- sub today_as_string ();
- sub string_from_days ($);
- sub days_from_string ($);
- sub ymd_from_days ($);
- sub days_from_ymd (@);
- sub ymd_from_string ($);
- sub string_from_ymd (@);
-
- sub expand_tilde ($); 
- sub check_file ($;$);
- sub fetch_line ($);
 
 =head1 DATE FUNCTIONS
 
@@ -369,9 +454,21 @@ sub today_as_days () {
     return Date_to_Days( Today() );
 }
 
+=head2 today_as_days
+
+Return the number of days in the date, as used by Date::Pcalc.
+
+=cut
+
 sub today_as_string () {
     return string_from_days( today_as_days() );
 }
+
+=head2 today_as_string
+
+Return today's date in YYYY-MM-DD format.
+
+=cut
 
 sub string_from_days ($) {
     my $days = shift;
@@ -379,29 +476,82 @@ sub string_from_days ($) {
     return sprintf("%04d-%02d-%02d", $year, $month, $day);
 }
 
+=head2 string_from_days( days )
+
+Convert the number of Date::Pcalc days into YYYY-MM-DD format.
+
+=cut
+
 sub days_from_string ($) {
     my $string = shift;
     my @date = ($string =~ /(\d{4})-(\d{2})-(\d{2})/);
     return Date_to_Days(@date) if (@date == 3);
 }
 
+=head2 days_from_string ( date )
+
+Convert a YYYY-MM-DD date into a number of days, as used by Date::Pcalc.
+
+=cut
+
 sub days_from_ymd (@) {
     return Date_to_Days(@_) if (@_ == 3);
 }
+
+=head2 days_from_ymd( year, month, day )
+
+Convert the numeric year, month and day date into Date::Pcalc days.
+
+=cut
 
 sub ymd_from_days ($) {
     my $days = shift;
     return Add_Delta_Days(1,1,1, $days - 1);
 }
 
+=head2 ymd_from_days( days )
+
+Convert the number of Date::Pcalc days into an array of numeric values in the form:
+
+    (year, month, day)
+
+=cut
+
 sub string_from_ymd (@) {
     return sprintf("%04d-%02d-%02d", @_);
 }
+
+=head2 string_from_ymd( year, month, day )
+
+Convert the numeric representation of year, month and day into a YYYY-MM-DD date.
+
+=cut
 
 sub ymd_from_string ($) {
     my $string = shift;
     return ($string =~ /(\d{4})-(\d{2})-(\d{2})/);
 }
+
+=head2 ymd_from_string( date )
+
+Convert a YYYY-MM-DD date into an array of numeric values in the form:
+
+    (year, month, day)
+
+=cut
+
+sub increment_date ($$) {
+    my ($string, $days) = @_;
+    my @date = ymd_from_string( $string );
+    my @newdate = Add_Delta_Days( @date, $days );
+    return string_from_ymd( @newdate );
+}
+
+=head2 increment_date( date, days )
+
+Add the number of days given to the YYYY-MM-DD date and return the new date in YYYY-MM-DD format.
+
+=cut
 
 =head1 FILE FUNCTIONS
 
@@ -450,13 +600,13 @@ sub check_file ($;$) {
 
 =head2 check_file( file, [dir] )
 
-=over 4
+=over 8
 
-=item C<file>
+=item file
 
 An optional fully qualified path-and-file, a simple file name, or "".
 
-=item C<dir>
+=item dir
 
 An optional directory C<dir>.  If present (and C<file> is not already an absolute path), it is prepended to
 C<file>.
@@ -512,7 +662,7 @@ Please report those you find to the author.
 
 =head1 AUTHOR
 
-Chris Willmot, chris@willmot.org.uk
+Chris Willmot, chris@willmot.co.uk
 
 =head1 SEE ALSO
 

@@ -1,5 +1,10 @@
 Revision history for Perl extension Finance::Shares::Log.
 
+0.03	Wed Nov 20 12:04:20 GMT 2002
+	added support for multiple destinations
+	added support for simulated time
+	documented exported functions
+
 0.02	Sun Nov 10 10:55:02 GMT 2002
 	default level now 2
 	added documentation

@@ -1,5 +1,5 @@
-Finance/Shares/Log version 0.01
-===============================
+Finance/Shares/Log
+==================
 
 More than just an object keeping track of activity in the Finance::Shares
 database and modelling suite, this also exports functions used by others in that
