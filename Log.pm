@@ -2,7 +2,7 @@ package Finance::Shares::Log;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 NAME
 
@@ -92,14 +92,13 @@ processing has been done on them.
 
 =cut
 
-### Finance::Shares::Log #####################################################
-
 =head1 CONSTRUCTOR
 
 =cut
 
 sub new {
     my ($class, $file, $dir, $level) = @_;
+    $level = 2 unless (defined $level);
     my $o = {};
     bless( $o, $class );
     $o->{logfile} = check_file($file, $dir);
@@ -110,7 +109,7 @@ sub new {
 	$o->{fh} = *STDERR;
 	$o->{isfile} = 0;
     }
-    $o->{level} = 1;
+    $o->{level} = $level;
     return $o;
 }
 
@@ -129,7 +128,7 @@ C<file>.
 
 =item C<level>
 
-The logging threshold.  Messages with numbers greater than this will be ignored.
+The logging threshold.  Messages with numbers greater than this will be ignored. (Default: 2)
 
 =back
 
@@ -320,7 +319,7 @@ C<open()> must have been called beforehand, and C<close()> should be called afte
 
 =cut
 
-### EXPORTED FUNCTIONS #######################################################
+### EXPORTED FUNCTIONS
 
 use File::Spec;
 use Date::Pcalc qw(:all);
@@ -383,11 +382,11 @@ sub string_from_days ($) {
 sub days_from_string ($) {
     my $string = shift;
     my @date = ($string =~ /(\d{4})-(\d{2})-(\d{2})/);
-    return Date_to_Days(@date);
+    return Date_to_Days(@date) if (@date == 3);
 }
 
 sub days_from_ymd (@) {
-    return Date_to_Days(@_);
+    return Date_to_Days(@_) if (@_ == 3);
 }
 
 sub ymd_from_days ($) {
@@ -504,6 +503,21 @@ sub fetch_line ($) {
 
 Return the next line of data from an open file.  Blank lines and '#' comments are skipped and leading and trailing
 space is removed.
+
+=cut
+
+=head1 BUGS
+
+Please report those you find to the author.
+
+=head1 AUTHOR
+
+Chris Willmot, chris@willmot.org.uk
+
+=head1 SEE ALSO
+
+L<Finance::Shares::MySQL> and
+L<Finance::Shares::Sample>.
 
 =cut
 
