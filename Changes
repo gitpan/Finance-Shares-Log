@@ -1,0 +1,8 @@
+Revision history for Perl extension Finance::Shares::Log.
+
+0.01  Sun Oct 20 15:42:09 2002
+	merged Log object from Stocks::Log
+	and date and file fns from Stocks::Common
+	- original version; created by h2xs 1.21 with options
+		-X -n Finance::Shares::Log
+

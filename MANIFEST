@@ -1,0 +1,10 @@
+Changes
+Log.pm
+Makefile.PL
+MANIFEST
+README
+t/dates.t
+t/files.t
+t/files.txt
+t/log.t
+

@@ -1,0 +1,34 @@
+Finance/Shares/Log version 0.01
+===============================
+
+More than just an object keeping track of activity in the Finance::Shares
+database and modelling suite, this also exports functions used by others in that
+family.  Therefore, it is probably required by all Finance::Shares modules.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+  File::Spec
+  Date::Pcalc
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2002 Christopher P Willmot.  All rights reserved.
+
+This work is published under the Artistic licence accompanying the Perl
+distribution which may be found at http://www.perl.org.  
+
+There is no warranty whatsoever.  Use at your own risk.  Just because it is here
+and is documented as it is does not mean that it is fit for any purpose implied
+by the code or accompanying documentation.  
+

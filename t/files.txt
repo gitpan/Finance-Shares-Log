@@ -1,0 +1,4 @@
+# This and the next line should be ignored
+
+hello world
+
